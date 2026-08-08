@@ -73,11 +73,11 @@ codex --yolo
 
 ### Hermes Plugin
 
-Skill + scripts, hookless. Hermes stores sessions in `~/.hermes/state.db`, so capture is a cron poller and recall is a `memsearch-recall` skill.
+MCP server + scripts. Hermes stores sessions in `~/.hermes/state.db`, so capture is a state.db poller and recall is a memory MCP server.
 
 ```bash
 bash memsearch/plugins/hermes/install.sh "$(pwd)"
-# then register a capture cron (every 60m) — see docs/platforms/hermes/installation.md
+hermes mcp add memsearch --command "<plugin>/.venv/bin/python <plugin>/server/memsearch_mcp_server.py"
 ```
 
 [:octicons-arrow-right-24: Hermes Plugin docs](platforms/hermes/index.md){ .md-button }
@@ -88,9 +88,9 @@ All platforms share the same markdown memory format and derive collection names 
 
 | | [Claude Code](platforms/claude-code/index.md) | [OpenClaw](platforms/openclaw/index.md) | [OpenCode](platforms/opencode/index.md) | [Codex CLI](platforms/codex/index.md) | [Hermes](platforms/hermes/index.md) |
 |---|:---:|:---:|:---:|:---:|:---:|
-| **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks | SKILL.md + scripts |
-| **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex | SQLite poller (cron) |
-| **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md | SKILL.md |
+| **Plugin type** | Shell hooks | TS plugin | TS plugin | Shell hooks | MCP server (Python) |
+| **Capture** | Stop hook + Haiku | agent_end hook | SQLite daemon | Stop hook + Codex | SQLite poller (daemon) |
+| **Recall** | SKILL.md (fork) | memory_search tool | memory_search tool | SKILL.md | memory_search tool (MCP) |
 | **Install** | Plugin marketplace | `openclaw plugins install --force` + hook permissions | npm + opencode.json | `install.sh` | `install.sh` |
 
 [:octicons-arrow-right-24: Platform comparison](platforms/index.md){ .md-button }

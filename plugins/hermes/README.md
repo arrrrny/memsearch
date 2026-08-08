@@ -1,27 +1,41 @@
 # memsearch Hermes plugin
 
-Semantic memory for [Hermes Agent](https://hermes-agent.nousresearch.com) — hookless integration:
-capture from Hermes's SQLite session store (`~/.hermes/state.db`) via a cron poller, recall via a
-`memsearch-recall` SKILL.md (search → expand → transcript). Shares the same
-`.memsearch/` markdown + Milvus collection as the Claude Code / OpenCode / Codex plugins.
+Semantic memory for [Hermes Agent](https://hermes-agent.nousresearch.com) —
+MCP tools for recall (the same model as the Zed extension) + a launchd/cron
+poller of Hermes's own session store (`~/.hermes/state.db`) for capture.
 
 ```
 plugins/hermes/
-├── install.sh                 # copies skills + scripts, prints the cron prompt
+├── install.sh                 # scripts + MCP venv + register instructions
 ├── README.md
+├── server/
+│   └── memsearch_mcp_server.py  # the MCP server (state.db capture/transcript)
 ├── scripts/
-│   ├── hermes-capture.py      # state.db poller -> daily .md + index (cron/launchd)
+│   ├── hermes-capture.py      # state.db poller -> daily .md + index
 │   ├── parse-transcript.py    # read original turns from ~/.hermes/state.db
 │   └── derive-collection.sh   # per-project Milvus collection name
-├── skills/
-│   └── memsearch-recall/SKILL.md
 └── prompts/                   # shared summarize / project_review / user_profile prompts
 ```
 
 Docs: `docs/platforms/hermes/` (index, how-it-works, memory-tools, installation).
 
-## Why hookless?
+## Install
 
-Hermes has no plugin hook runtime (unlike Claude Code / OpenCode). Its sessions are in a local
-SQLite DB, so capture is a background poller (the OpenCode model), and recall is a skill the agent
-loads (the Claude Code model). That combination is what this plugin implements.
+```bash
+bash plugins/hermes/install.sh "$(pwd)"
+hermes mcp add memsearch --command "$(pwd)/plugins/hermes/.venv/bin/python $(pwd)/plugins/hermes/server/memsearch_mcp_server.py"
+```
+
+Then ask Hermes: *"recall what we decided about X"* — it calls `memory_search`.
+
+## Architecture
+
+- **Recall** — the MCP server exposes `memory_search`, `memory_get`,
+  `memory_transcript`, `memory_capture` as first-class Hermes tools (Hermes
+  has a built-in MCP client).
+- **Capture** — `hermes-capture.py` polls `~/.hermes/state.db` and appends
+  turns to `<home>/.memsearch/memory/YYYY-MM-DD.md` in the shared format,
+  then re-indexes. Runs as a launchd daemon (2m poll) or a cron.
+- **Memory home** — conversations live in a dedicated folder (default
+  `~/hermes`, override `HERMES_MEMORY_HOME`) so Hermes logs don't pollute
+  project repos.

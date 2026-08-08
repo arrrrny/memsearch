@@ -5,55 +5,49 @@
 ```mermaid
 graph TB
   subgraph "Capture"
-    DB[("Hermes state.db<br/>~/.hermes/state.db")] --> CRON["hermes-capture.py<br/>(cron/launchd, hourly)"]
-    CRON --> MD["memory/YYYY-MM-DD.md"]
+    DB[("Hermes state.db<br/>~/.hermes/state.db")] --> DAEMON["hermes-capture.py<br/>(launchd daemon, 2m poll)"]
+    DAEMON --> MD["memory/YYYY-MM-DD.md"]
   end
   subgraph "Index"
     MD --> INDEX["memsearch index"]
     INDEX --> MIL[(Milvus)]
   end
   subgraph "Recall"
-    SKILL["memsearch-recall SKILL.md<br/>(search -> expand -> transcript)"] --> MIL
-    SKILL --> PARSE["parse-transcript.py<br/>(reads state.db)"]
+    MCP["memsearch MCP server<br/>(hermes mcp add)"] --> MIL
+    MCP --> PARSE["memory_transcript<br/>(reads state.db)"]
   end
 ```
 
 ## Capture (state.db poller)
 
 Hermes has no plugin hook system for capture, so the plugin uses a background
-poller — the same model as the OpenCode plugin. A cron/launchd job runs
-`hermes-capture.py <project> <minutes>`:
+poller — the same model as the OpenCode plugin. A launchd daemon (or cron)
+runs `hermes-capture.py`:
 
 1. Reads `~/.hermes/state.db` (`messages` table: `session_id, role, content, timestamp`) for turns newer than the last captured one per session.
-2. Appends them to `<project>/.memsearch/memory/YYYY-MM-DD.md` in the shared format:
+2. Appends them to `<memory-home>/.memsearch/memory/YYYY-MM-DD.md` in the shared format:
    ```
    ## Session 09:20
    <!-- hermes session_id:<sid> capture:<msgid> transcript:hermes-state-db -->
    === Transcript of a conversation between User and Hermes ===
-   [assistant] ...
+   [Assistant]: ...
    ```
-3. Runs `memsearch index .memsearch/memory/ --collection ms_<proj>_<hash>`.
+3. Runs `memsearch index` into the `ms_hermes_*` collection.
 
-A per-project state file (`.memsearch/hermes-capture-state.json`) prevents duplicate appends.
+A per-session checkpoint file prevents duplicate appends, and the daemon
+flocks so concurrent polls never double-write.
 
-Because the `.md` files and collection are shared, a turn captured by Hermes is
-searchable from Claude Code / OpenCode / Codex in the same project.
+## Recall (MCP server)
 
-## Recall (SKILL.md)
-
-Hermes loads the `memsearch-recall` skill into context. When the user asks a
-question with history, the agent runs the three-layer flow:
-
-| Layer | Command |
-|-------|---------|
-| Search | `memsearch search "<query>" --top-k 5 --collection <col>` |
-| Expand | `memsearch expand <hash> --collection <col>` |
-| Transcript | `python3 .memsearch/scripts/parse-transcript.py <session_id> --turn <id>` |
+Hermes connects to the MCP server via `hermes mcp add` — the 4 memory tools
+become first-class Hermes tools. The server reads `~/.hermes/state.db` for
+transcript/capture and queries the shared Milvus collection for search.
 
 ## Differences from the OpenCode plugin
 
 | | OpenCode | Hermes |
 |---|----------|--------|
-| Capture trigger | background daemon (10s) | hourly cron/launchd |
-| Tool registration | `tool()` API (TS) | SKILL.md recall |
+| Capture trigger | background daemon (10s) | launchd daemon (2m) or cron |
+| Tool registration | `tool()` API (TS) | MCP server (Python, fastmcp) |
 | Session store | `~/.local/share/opencode/opencode.db` | `~/.hermes/state.db` |
+| Memory home | project `.memsearch/` | dedicated `~/hermes/.memsearch/` |

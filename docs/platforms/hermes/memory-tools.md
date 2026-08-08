@@ -1,33 +1,33 @@
 # Memory Tools
 
-Hermes exposes memory through the **`memsearch-recall` skill** rather than a
-runtime tool API. The skill instructs the agent to run the memsearch CLI in
-three progressive layers.
+The plugin registers an MCP server (fastmcp) that Hermes connects to via its
+built-in MCP client (`hermes mcp add memsearch --command ...`). The tools are
+first-class Hermes tools, available to the agent during any conversation.
 
-## Skill Reference
+## Tool Reference
 
-| Step | What the agent runs | What it returns |
-|------|---------------------|-----------------|
-| **Search** | `memsearch search "<query>" --top-k 5 --json-output --collection <col>` | Top-K chunks with scores, dates, snippets (hybrid BM25 + dense + RRF) |
-| **Expand** | `memsearch expand <chunk_hash> --collection <col>` | Full markdown section with session anchors + source |
-| **Transcript** | `python3 .memsearch/scripts/parse-transcript.py <session_id> [--turn <msgid>]` | Original Hermes turns from `~/.hermes/state.db` |
+| Tool | What it does |
+|------|--------------|
+| **memory_search** | Semantic search over the shared memory (hybrid BM25 + dense + RRF) via `memsearch search --json-output` |
+| **memory_get** | Expand a chunk to its full markdown section via `memsearch expand` |
+| **memory_transcript** | Read the original turns of a Hermes session from `~/.hermes/state.db` |
+| **memory_capture** | Capture recent Hermes sessions into the daily memory file + re-index (self-contained, idempotent) |
 
 ## How to Trigger
 
-Ask naturally: *"recall what we decided about X"*, *"have I seen this before"*, or *"what did past sessions say about Y"*. The agent detects the memory need, loads the skill (installed in `~/.hermes/skills/`), and runs the flow. No slash command or plugin UI needed — it's context-driven like the Claude Code skill recall.
+Ask naturally: *"recall what we decided about X"*, *"have I seen this before"*, or *"what did past sessions say about Y"*. The agent calls `memory_search` → `memory_get` → `memory_transcript` as needed — the same three-layer progressive recall as the OpenCode / OpenClaw plugins.
 
 ## Three-Layer Progressive Recall
 
-1. **Search** — broad semantic query first. The agent should try 1-2 alternate phrasings if the first query is weak.
-2. **Expand** — for the most relevant hit, expand to see the full section + surrounding context.
-3. **Transcript** — when the chunk's `<!-- hermes session_id:... -->` anchor matters (e.g. a decision's exact reasoning), read the original turns from state.db.
+1. **Search** — `memory_search` for the core intent; try 1-2 alternate phrasings if weak.
+2. **Expand** — `memory_get` on the best hit for the full section + context.
+3. **Transcript** — when the chunk carries a `hermes session_id:<sid>` anchor, `memory_transcript` reads the exact turns from state.db.
 
 ## Cross-Agent Recall
 
-Because all platforms write the same `.md` format + collection, `memsearch search` returns Claude Code, OpenCode, and Hermes memories mixed by relevance — a Hermes session can recall what Claude Code decided in the same project.
+All platforms write the same `.md` format + collection — `memory_search` returns Claude Code, OpenCode, Zed, and Hermes memories mixed by relevance.
 
 ## Tips
 
-- Collection is per project path: `bash .memsearch/scripts/derive-collection.sh "$(pwd)"`.
-- If search feels stale, the index only runs after capture — force with `memsearch index .memsearch/memory/ --collection <col>`.
-- Vague queries: fall back to reading the daily files directly (`ls .memsearch/memory/`).
+- Collection: derived from the memory home (`ms_hermes_*` by default).
+- If search feels stale, call `memory_capture` (or the daemon re-indexes every 2h).

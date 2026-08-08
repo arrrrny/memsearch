@@ -4,7 +4,7 @@
 
 - memsearch CLI installed (`uv tool install "memsearch[onnx]"`).
 - Hermes Agent installed (`~/.hermes/state.db` exists after first run).
-- A shell `.memsearch/scripts/derive-collection.sh` — provided by this plugin.
+- Python 3.10+.
 
 ## Install
 
@@ -15,75 +15,52 @@ plugins/hermes/install.sh "$(pwd)"
 
 That will:
 
-1. Copy `skills/memsearch-recall` → `~/.hermes/skills/software-development/memsearch-recall` (available to every Hermes session).
-2. Copy `scripts/{hermes-capture.py, parse-transcript.py, derive-collection.sh}` → `<project>/.memsearch/scripts/`.
-3. Print the capture-cron prompt.
+1. Copy `scripts/{hermes-capture.py, parse-transcript.py, derive-collection.sh}` → `<project>/.memsearch/scripts/`.
+2. Create the MCP venv (`plugins/hermes/.venv` + `fastmcp`).
+3. Print the `hermes mcp add` + capture registration commands.
 
-### Manual install (skip install.sh)
+## Register the MCP server (recall)
 
 ```bash
-HERMES_SKILLS=~/.hermes/skills/software-development
-mkdir -p "$HERMES_SKILLS"
-cp -R plugins/hermes/skills/memsearch-recall "$HERMES_SKILLS/"
-
-mkdir -p .memsearch/scripts .memsearch/memory
-cp plugins/hermes/scripts/hermes-capture.py .memsearch/scripts/
-cp plugins/hermes/scripts/parse-transcript.py .memsearch/scripts/
-cp plugins/hermes/scripts/derive-collection.sh .memsearch/scripts/
+hermes mcp add memsearch --command "<plugin>/.venv/bin/python <plugin>/server/memsearch_mcp_server.py"
 ```
+
+The agent then has `memory_search` / `memory_get` / `memory_transcript` / `memory_capture` as tools.
 
 ## Configure
 
-The capture reads Hermes's session store directly, so no extra API keys beyond
-the memsearch embedding setup. Optional per-agent summarization overrides in
+The memory home defaults to `~/hermes` (dedicated folder — Hermes logs don't
+pollute project repos). Override with the `HERMES_MEMORY_HOME` env var. The
+server reads Hermes's session store directly, so no extra API keys beyond the
+memsearch embedding setup. Optional per-agent config in
 `~/.memsearch/config.toml`:
 
 ```toml
 [plugins.hermes.summarize]
 enabled = true
 provider = "openai"
-model = "deepseek-flash"        # your embedding/host model
-
-[plugins.hermes.user_profile]
-enabled = true
-min_interval_hours = 24
+model = "deepseek-flash"
 ```
 
-## Capture cron
+## Capture
 
-Register a recurring job so the session store is captured on an interval:
+**Continuous (recommended)** — launchd daemon polling `~/.hermes/state.db`
+every 2 minutes, with a periodic re-index every 2h:
 
-**Hermes cron** — create a job (every 60m) with the prompt:
+```bash
+launchctl bootstrap gui/$(id -u) <plugin>/hermes-capture-daemon.plist
+```
+
+**Or cron** — a recurring job (every 60m):
 ```
 Run: /usr/local/bin/python3 <project>/.memsearch/scripts/hermes-capture.py <project> 60
-```
-
-**launchd (macOS)** — a plist that runs the same command each hour:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.zikzak.memsearch-hermes-capture</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/usr/local/bin/python3</string>
-    <string><PROJECT>/.memsearch/scripts/hermes-capture.py</string>
-    <string><PROJECT></string>
-    <string>60</string>
-  </array>
-  <key>StartInterval</key><integer>3600</integer>
-  <key>RunAtLoad</key><true/>
-</dict>
-</plist>
 ```
 
 ## Verify
 
 ```bash
 COLL=$(bash .memsearch/scripts/derive-collection.sh "$(pwd)")
-memsearch stats --collection "$COLL"          # indexed chunks grow
-memsearch search "hello world" --top-k 3 --collection "$COLL"
+memsearch stats --collection "$COLL"
 ```
 
-Then ask Hermes: *"recall what we worked on recently"* to exercise the skill.
+Then ask Hermes: *"recall what we worked on recently"* — it calls `memory_search`.
