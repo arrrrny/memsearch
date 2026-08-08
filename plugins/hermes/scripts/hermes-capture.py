@@ -89,7 +89,8 @@ def main():
                 continue
             if len(text) > 1200:
                 text = text[:1200] + ' …'
-            lines.append(f'[{role}] {text}')
+            label = 'User' if role == 'user' else 'Assistant'
+            lines.append(f'[{label}]: {text}')
         with open(memory_file, 'a') as f:
             f.write('\n'.join(lines))
         save_state(state_file, sid, new[-1][1])
