@@ -31,8 +31,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/zilliztech/memsearch.git || true
+
       - name: Fetch upstream
-        run: git fetch origin main
+        run: git fetch upstream main
 
       - name: Switch to development
         run: git checkout development || git checkout -b development
@@ -41,7 +44,7 @@ jobs:
         id: check
         run: |
           LOCAL=$(git rev-parse HEAD)
-          UPSTREAM=$(git rev-parse origin/main)
+          UPSTREAM=$(git rev-parse upstream/main)
           if [ "$LOCAL" = "$UPSTREAM" ]; then
             echo "up_to_date=true" >> "$GITHUB_OUTPUT"
           else
@@ -52,7 +55,7 @@ jobs:
         if: steps.check.outputs.up_to_date == 'false'
         run: |
           # Try merge first (preserves history)
-          if git merge origin/main --no-edit -m "merge: sync upstream $(date +%Y-%m-%d)"; then
+          if git merge upstream/main --no-edit -m "merge: sync upstream $(date +%Y-%m-%d)"; then
             echo "Merge succeeded"
           else
             echo "Merge conflict detected — aborting and skipping this run"
